@@ -1,0 +1,111 @@
+package com.example.soundapp;
+import android.content.Intent;
+import android.os.Bundle;
+import android.util.Log;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.Collections;
+
+public class MainActivity extends AppCompatActivity {
+    private ServerSocket serverSocket;
+    private Button buttonStart, buttonExit;
+    private TextView ipdisplay;
+    private Thread serverThread;
+    private static final int PORT = 8080;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        buttonStart = findViewById(R.id.buttonStart);
+        buttonExit = findViewById(R.id.buttonExit);
+        ipdisplay = findViewById(R.id.ipdisplay);
+
+        ipdisplay.setText("Server IP: " + getLocalIpAddress());
+
+        buttonStart.setOnClickListener(v -> {
+            if (serverThread == null || !serverThread.isAlive()) {
+                serverThread = new Thread(this::startServer);
+                serverThread.start();
+                buttonStart.setEnabled(false);
+            }
+        });
+
+        buttonExit.setOnClickListener(v -> finish());
+    }
+
+    private String getLocalIpAddress() {
+        try {
+            for (NetworkInterface intf : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                for (InetAddress addr : Collections.list(intf.getInetAddresses())) {
+                    if (!addr.isLoopbackAddress() && addr instanceof Inet4Address) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e("IP", "Error getting IP", e);
+        }
+        return "Unable to get IP";
+    }
+
+    private void startServer() {
+        try {
+            serverSocket = new ServerSocket(PORT);
+            runOnUiThread(() -> Toast.makeText(this,
+                    "Server started on port " + PORT, Toast.LENGTH_SHORT).show());
+
+            while (!Thread.currentThread().isInterrupted()) {
+                try (
+                        Socket clientSocket = serverSocket.accept();
+                        BufferedReader in = new BufferedReader(
+                                new InputStreamReader(clientSocket.getInputStream()))
+                ) {
+                    String receivedData = in.readLine();
+                    if (receivedData == null) continue;
+
+                    Log.d("SERVER", "Received: " + receivedData);
+
+                    // Start chart activity with received data
+                    Intent intent = new Intent(this, BarChartActivity.class);
+                    intent.putExtra("AVERAGE_VALUE", receivedData);
+                    startActivity(intent);
+
+                } catch (IOException e) {
+                    if (!Thread.currentThread().isInterrupted()) {
+                        Log.e("SERVER", "Client error", e);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            Log.e("SERVER", "Server error", e);
+            runOnUiThread(() -> {
+                Toast.makeText(this, "Server failed: " + e.getMessage(),
+                        Toast.LENGTH_LONG).show();
+                buttonStart.setEnabled(true);
+            });
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try {
+            if (serverSocket != null) serverSocket.close();
+            if (serverThread != null) serverThread.interrupt();
+        } catch (IOException e) {
+            Log.e("SERVER", "Cleanup error", e);
+        }
+    }
+}

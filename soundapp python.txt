@@ -1,0 +1,54 @@
+import RPi.GPIO as GPIO
+import time
+import socket
+
+sndpin = 23
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(sndpin, GPIO.IN)
+
+def getSound():
+    read = 0
+    value = 0
+    snd_array = []
+    while read < 10:
+        sound = GPIO.input(sndpin)
+        if sound == GPIO.HIGH:
+            value = 0
+        elif sound == GPIO.LOW:
+            value = 5
+        read += 1
+        snd_array.append(value)
+        time.sleep(0.8)
+    average = sum(snd_array)/len(snd_array)
+    print(snd_array)
+    return average
+
+def connect_android():
+    ip_add = "192.168.37.17"  # Your Android device's IP
+    port = 8080
+    while True:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(5)
+                print(f"Connecting to: {ip_add}:{port}")
+                s.connect((ip_add, port))
+                print(f"Connected to {ip_add}:{port}")
+                while True:
+                    avg = getSound()
+                    s.sendall(f"{avg:.2f}".encode())
+                    print(f"Sent: {avg:.2f}")
+        except socket.timeout:
+            print("Server not responding. Retrying...")
+        except ConnectionRefusedError:
+            print("Server not running. Retrying...")
+        except Exception as e:
+            print(f"Error: {e}")
+        time.sleep(1)
+
+if __name__ == "__main__":
+    try:
+        connect_android()
+    except KeyboardInterrupt:
+        print("Program stopped")
+    finally:
+        GPIO.cleanup()
